@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상품 관리</title>
+<!-- Supabase 클라이언트 (버전 고정) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<!-- server.ps1이 .env.local을 읽어 만들어 주는 연결 정보 (file://로 열면 없음) -->
+<script src="config.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #2457c5; --accent-text: #ffffff; --danger: #c43d3d; --danger-bg: #fdecec;
+    --has: #b42318; --has-bg: #fef0ee; --none: #067647; --none-bg: #ecfdf3; --unknown: #8a5a00; --unknown-bg: #fff6db;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b; --panel: #1b1f27; --text: #e6e8ec; --muted: #98a2b3; --line: #2c323d;
+      --accent: #6f9bff; --accent-text: #0b1020; --danger: #ff7b7b; --danger-bg: #3a1d1d;
+      --has: #ff9c8f; --has-bg: #3a1f1c; --none: #6ce0a3; --none-bg: #15301f; --unknown: #f5c451; --unknown-bg: #3a3016;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; }
+  header .status { color: var(--muted); font-size: 13px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .hidden { display: none !important; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
+  textarea { min-height: 60px; resize: vertical; }
+  button { padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+  button.small { padding: 4px 10px; font-size: 13px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .note { font-size: 13px; color: var(--muted); }
+  .warn { font-size: 13px; color: var(--unknown); background: var(--unknown-bg); padding: 8px 10px; border-radius: 6px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .toolbar input { flex: 1 1 240px; width: auto; }
+  .toolbar select { flex: 0 0 150px; width: auto; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  tbody tr.row { cursor: pointer; }
+  tbody tr.row:hover { background: var(--bg); }
+  td.num { text-align: right; white-space: nowrap; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; }
+  .badge.has { color: var(--has); background: var(--has-bg); }
+  .badge.none { color: var(--none); background: var(--none-bg); }
+  .badge.unknown { color: var(--unknown); background: var(--unknown-bg); }
+  .count { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 40px); border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text); }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  .dlg-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .dlg-head h2 { margin: 0; font-size: 17px; }
+  .dlg-body { padding: 4px 18px 18px; }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--panel); }
+  h3 { font-size: 14px; margin: 18px 0 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .sub-row { display: grid; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .sub-row.ing { grid-template-columns: 1fr 1fr auto; }
+  .sub-row.sto { grid-template-columns: 110px 90px 80px 1fr auto; }
+  .sub-row.cau { grid-template-columns: 120px 1fr auto; }
+  .sec-head { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
+  .sec-head h3 { margin: 0; }
+  .empty { color: var(--muted); font-size: 13px; padding: 4px 0; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.2); z-index: 10; }
+  #toast.error { background: var(--danger); color: #fff; }
+  @media (max-width: 640px) {
+    .grid2 { grid-template-columns: 1fr; }
+    .sub-row.sto { grid-template-columns: 1fr 1fr; }
+    .sub-row.cau, .sub-row.ing { grid-template-columns: 1fr; }
+    .hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>상품 관리</h1>
+  <span class="status" id="status">연결 안 됨</span>
+  <button class="small hidden" id="btn-disconnect">연결 해제</button>
+</header>
+
+<main>
+  <!-- 연결 화면 (.env.local 값이 없을 때만 보임) -->
+  <section class="card" id="connect-view" style="max-width:560px;margin:40px auto;">
+    <h2 style="margin-top:0;font-size:17px;">Supabase 연결</h2>
+    <p class="note">보통은 app/product-admin/.env.local에 값을 넣고 server.ps1로 열면 자동으로 연결됩니다.
+      직접 넣으려면 Supabase 대시보드 → Project Settings → API에서 값을 복사합니다.</p>
+    <form id="connect-form">
+      <label for="conn-url">Project URL</label>
+      <input id="conn-url" placeholder="https://xxxx.supabase.co" required autocomplete="off">
+      <label for="conn-key">service_role 키</label>
+      <input id="conn-key" type="password" required autocomplete="off">
+      <p class="warn">service_role 키는 모든 권한을 가진 키이므로 이 페이지를 내 PC 밖으로 공유하거나 배포하지 마세요.</p>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--text);"><input type="checkbox" id="conn-remember" style="width:auto;"> 이 브라우저에 연결 정보 기억</label>
+      <div style="margin-top:14px;"><button class="primary" type="submit" id="btn-connect">연결</button></div>
+    </form>
+  </section>
+
+  <!-- 목록 화면 -->
+  <section class="hidden" id="app-view">
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="상품코드 · 상품명 · 원재료 · 주의사항 검색">
+      <select id="f-category"><option value="">분류 전체</option></select>
+      <select id="f-allergen">
+        <option value="">알레르기 전체</option>
+        <option value="has">알레르기 있음</option>
+        <option value="none">알레르기 없음</option>
+        <option value="unknown">미확인</option>
+      </select>
+      <button id="btn-refresh">새로고침</button>
+      <button class="primary" id="btn-add">+ 상품 추가</button>
+    </div>
+    <p class="count" id="count"></p>
+    <div class="card table-wrap" style="padding:0;">
+      <table>
+        <thead>
+          <tr>
+            <th>상품코드</th><th>상품명</th><th>분류</th><th class="hide-sm">용량</th><th class="hide-sm">수량</th>
+            <th style="text-align:right;">판매가</th><th>알레르기</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<!-- 상세 보기 -->
+<dialog id="detail-dlg">
+  <div class="dlg-head"><h2 id="detail-title"></h2><button class="small" data-close>닫기</button></div>
+  <div class="dlg-body" id="detail-body"></div>
+</dialog>
+
+<!-- 상품 추가 -->
+<dialog id="add-dlg">
+  <form id="add-form" novalidate>
+    <div class="dlg-head"><h2>상품 추가</h2><button class="small" type="button" data-close>닫기</button></div>
+    <div class="dlg-body">
+      <h3>기본 정보</h3>
+      <div class="grid2">
+        <div><label>상품코드 *</label><input name="product_id" placeholder="P-0000" required></div>
+        <div><label>상품명 *</label><input name="name" required></div>
+        <div><label>분류 *</label><select name="category" required></select></div>
+        <div><label>판매가(원) *</label><input name="price" type="number" min="0" step="1" required></div>
+        <div><label>용량 *</label><input name="net_amount" placeholder="500g" required></div>
+        <div><label>수량</label><input name="quantity" placeholder="10개"></div>
+        <div><label>판매기간</label><input name="sale_period" placeholder="4~7월 (한정 판매일 때만)"></div>
+      </div>
+      <label>특징</label><textarea name="description"></textarea>
+
+      <div class="sec-head"><h3>원재료</h3><button class="small" type="button" data-add="ing">+ 행 추가</button></div>
+      <div id="sec-ing"></div>
+
+      <div class="sec-head"><h3>보관조건</h3><button class="small" type="button" data-add="sto">+ 행 추가</button></div>
+      <div id="sec-sto"></div>
+
+      <div class="sec-head"><h3>주의사항</h3><button class="small" type="button" data-add="cau">+ 행 추가</button></div>
+      <p class="note" style="margin:2px 0 6px;">알레르기 유발물질이 없으면 유형 '알레르기', 내용 '없음'으로 넣어 주세요.</p>
+      <div id="sec-cau"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" data-close>취소</button>
+      <button class="primary" type="submit" id="btn-save">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+// 허용 값은 schema.sql의 check 제약과 같아야 한다
+const CATEGORIES = ['신선과일', '채소', '가공식품', '냉동식품'];
+const CONDITIONS = ['수령 후', '개봉 전', '개봉 후'];
+const STORAGE_TYPES = ['상온', '냉장', '냉동'];
+const CAUTION_TYPES = ['알레르기', '교차오염', '보관금지', '조리금지', '섭취주의'];
+const NOT_ALLERGEN = ['없음', '미확인', '미기재'];  // 알레르기 '있음'으로 치지 않는 값
+const STORE_KEY = 'product-admin-connection';
+
+let db = null;
+let products = [];
+
+const $ = (sel) => document.querySelector(sel);
+
+// DB에서 온 값은 항상 이스케이프해서 화면에 넣는다
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function toast(msg, isError = false) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = isError ? 'error' : '';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.add('hidden'), isError ? 6000 : 2500);
+}
+
+function options(list, selected = '') {
+  return list.map((v) => `<option${v === selected ? ' selected' : ''}>${esc(v)}</option>`).join('');
+}
+
+// ---------- 연결 정보 (이 브라우저에만 저장) ----------
+function loadConn() { try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; } }
+function saveConn(c) { try { localStorage.setItem(STORE_KEY, JSON.stringify(c)); } catch {} }
+function clearConn() { try { localStorage.removeItem(STORE_KEY); } catch {} }
+
+async function connect(url, key, remember, label = url) {
+  url = url.trim(); key = key.trim();
+  $('#btn-connect').disabled = true;
+  try {
+    db = supabase.createClient(url, key, { auth: { persistSession: false } });
+    if (!(await refresh())) { db = null; return; }
+    if (remember) saveConn({ url, key });
+    $('#status').textContent = label;
+    $('#connect-view').classList.add('hidden');
+    $('#app-view').classList.remove('hidden');
+    $('#btn-disconnect').classList.remove('hidden');
+  } catch (e) {
+    db = null;
+    toast('연결 실패: ' + e.message, true);
+  } finally {
+    $('#btn-connect').disabled = false;
+  }
+}
+
+function disconnect() {
+  clearConn();
+  db = null;
+  products = [];
+  $('#conn-key').value = '';
+  $('#status').textContent = '연결 안 됨';
+  $('#app-view').classList.add('hidden');
+  $('#connect-view').classList.remove('hidden');
+  $('#btn-disconnect').classList.add('hidden');
+}
+
+// ---------- 조회 ----------
+async function refresh() {
+  const { data, error } = await db
+    .from('products')
+    .select('*, product_ingredients(*), product_storage(*), product_cautions(*)')
+    .order('product_id');
+  if (error) {
+    toast('조회 실패: ' + error.message, true);
+    return false;
+  }
+  products = data;
+  if (!products.length) toast('상품이 0건입니다. anon 키로 연결했다면 RLS 때문에 비어 보일 수 있습니다.', true);
+  render();
+  return true;
+}
+
+// 알레르기 표시: 있음(성분 나열) / 없음 / 미확인(알레르기 행이 없거나 '미확인'·'미기재'뿐)
+function allergenOf(p) {
+  const rows = p.product_cautions.filter((c) => c.caution_type === '알레르기');
+  const real = rows.map((c) => c.content.trim()).filter((t) => t && !NOT_ALLERGEN.includes(t));
+  if (real.length) return { kind: 'has', text: real.join(', ') };
+  if (rows.some((c) => c.content.trim() === '없음')) return { kind: 'none', text: '없음' };
+  return { kind: 'unknown', text: '미확인' };
+}
+
+function matches(p, q, category, allergen) {
+  if (category && p.category !== category) return false;
+  if (allergen && allergenOf(p).kind !== allergen) return false;
+  if (!q) return true;
+  const text = [
+    p.product_id, p.name, p.description, p.sale_period,
+    ...p.product_ingredients.flatMap((i) => [i.ingredient, i.origin]),
+    ...p.product_cautions.map((c) => c.content),
+  ].join(' ').toLowerCase();
+  return text.includes(q);
+}
+
+function render() {
+  const q = $('#q').value.trim().toLowerCase();
+  const list = products.filter((p) => matches(p, q, $('#f-category').value, $('#f-allergen').value));
+  $('#count').textContent = `${list.length}건 / 전체 ${products.length}건`;
+  $('#rows').innerHTML = list.length
+    ? list.map((p) => {
+        const a = allergenOf(p);
+        return `<tr class="row" data-id="${esc(p.product_id)}">
+          <td>${esc(p.product_id)}</td>
+          <td>${esc(p.name)}</td>
+          <td>${esc(p.category)}</td>
+          <td class="hide-sm">${esc(p.net_amount)}</td>
+          <td class="hide-sm">${esc(p.quantity ?? '')}</td>
+          <td class="num">${Number(p.price).toLocaleString('ko-KR')}원</td>
+          <td><span class="badge ${a.kind}">${esc(a.text)}</span></td>
+          <td><button class="small danger" data-del="${esc(p.product_id)}">삭제</button></td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="8" class="empty" style="text-align:center;padding:24px;">조건에 맞는 상품이 없습니다</td></tr>`;
+}
+
+// ---------- 상세 ----------
+function showDetail(id) {
+  const p = products.find((x) => x.product_id === id);
+  if (!p) return;
+  const a = allergenOf(p);
+  const table = (heads, rows) => rows.length
+    ? `<div class="table-wrap"><table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${
+        rows.map((r) => `<tr>${r.map((v) => `<td>${v == null || v === '' ? '<span class="note">—</span>' : esc(v)}</td>`).join('')}</tr>`).join('')
+      }</tbody></table></div>`
+    : `<p class="empty">등록된 정보 없음</p>`;
+  const byId = (x, y) => x.id - y.id;
+
+  $('#detail-title').textContent = `${p.name} (${p.product_id})`;
+  $('#detail-body').innerHTML = `
+    <h3>기본 정보</h3>
+    ${table(['분류', '용량', '수량', '판매가', '판매기간'], [[p.category, p.net_amount, p.quantity, Number(p.price).toLocaleString('ko-KR') + '원', p.sale_period]])}
+    <p>${esc(p.description ?? '')}</p>
+    <p>알레르기: <span class="badge ${a.kind}">${esc(a.text)}</span></p>
+    <h3>원재료</h3>
+    ${table(['원재료', '원산지'], [...p.product_ingredients].sort(byId).map((i) => [i.ingredient, i.origin ?? '미기재']))}
+    <h3>보관조건</h3>
+    ${table(['상태', '보관방법', '기간(일)', '비고'], [...p.product_storage].sort(byId).map((s) => [s.condition, s.storage_type, s.days ?? '미기재', s.note]))}
+    <h3>주의사항</h3>
+    ${table(['유형', '내용'], [...p.product_cautions].sort(byId).map((c) => [c.caution_type, c.content]))}`;
+  $('#detail-dlg').showModal();
+}
+
+// ---------- 삭제 ----------
+async function remove(id) {
+  const p = products.find((x) => x.product_id === id);
+  if (!p) return;
+  if (!confirm(`${p.name}(${p.product_id})을(를) 삭제할까요?\n원재료·보관조건·주의사항도 함께 삭제되며 되돌릴 수 없습니다.`)) return;
+  const { data, error } = await db.from('products').delete().eq('product_id', id).select('product_id');
+  if (error) return toast('삭제 실패: ' + error.message, true);
+  if (!data.length) return toast('삭제되지 않았습니다. 키 권한(RLS)을 확인하세요.', true);
+  toast(`${p.name} 삭제됨`);
+  await refresh();
+}
+
+// ---------- 추가 ----------
+const SUB_ROWS = {
+  ing: () => `<div class="sub-row ing">
+      <input data-f="ingredient" placeholder="원재료 *">
+      <input data-f="origin" placeholder="원산지 (모르면 비움)">
+      <button class="small" type="button" data-remove>삭제</button></div>`,
+  sto: () => `<div class="sub-row sto">
+      <select data-f="condition">${options(CONDITIONS)}</select>
+      <select data-f="storage_type">${options(STORAGE_TYPES)}</select>
+      <input data-f="days" type="number" min="1" step="1" placeholder="일">
+      <input data-f="note" placeholder="비고">
+      <button class="small" type="button" data-remove>삭제</button></div>`,
+  cau: () => `<div class="sub-row cau">
+      <select data-f="caution_type">${options(CAUTION_TYPES)}</select>
+      <input data-f="content" placeholder="내용 *">
+      <button class="small" type="button" data-remove>삭제</button></div>`,
+};
+
+function addSubRow(kind) { $('#sec-' + kind).insertAdjacentHTML('beforeend', SUB_ROWS[kind]()); }
+
+function openAdd() {
+  const f = $('#add-form');
+  f.reset();
+  f.category.innerHTML = options(CATEGORIES);
+  for (const k of Object.keys(SUB_ROWS)) $('#sec-' + k).innerHTML = '';
+  addSubRow('ing');
+  addSubRow('sto');
+  $('#sec-cau').innerHTML = SUB_ROWS.cau();  // 첫 행은 알레르기
+  $('#add-dlg').showModal();
+  f.product_id.focus();
+}
+
+// 빈 문자열은 NULL로 저장
+const val = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
+
+function readSubRows(kind) {
+  return [...$('#sec-' + kind).querySelectorAll('.sub-row')]
+    .map((row) => Object.fromEntries([...row.querySelectorAll('[data-f]')].map((el) => [el.dataset.f, val(el.value)])));
+}
+
+async function save(e) {
+  e.preventDefault();
+  const f = $('#add-form');
+  const product = {
+    product_id: val(f.product_id.value)?.toUpperCase() ?? null,
+    name: val(f.name.value),
+    category: f.category.value,
+    net_amount: val(f.net_amount.value),
+    quantity: val(f.quantity.value),
+    price: f.price.value === '' ? null : Number(f.price.value),
+    sale_period: val(f.sale_period.value),
+    description: val(f.description.value),
+  };
+  // 비어 있는 하위 행은 무시
+  const ing = readSubRows('ing').filter((r) => r.ingredient || r.origin);
+  const sto = readSubRows('sto').filter((r) => r.days || r.note).map((r) => ({ ...r, days: r.days == null ? null : Number(r.days) }));
+  const cau = readSubRows('cau').filter((r) => r.content);
+
+  // 입력 확인 (DB 제약과 같은 규칙)
+  if (!/^P-\d{4}$/.test(product.product_id ?? '')) return toast('상품코드는 P-0000 형식이어야 합니다.', true);
+  if (products.some((p) => p.product_id === product.product_id)) return toast('이미 있는 상품코드입니다.', true);
+  if (!product.name || !product.net_amount) return toast('상품명과 용량은 필수입니다.', true);
+  if (!Number.isInteger(product.price) || product.price < 0) return toast('판매가는 0 이상의 정수여야 합니다.', true);
+  if (ing.some((r) => !r.ingredient)) return toast('원재료 이름이 빈 행이 있습니다.', true);
+  if (sto.some((r) => r.days != null && (!Number.isInteger(r.days) || r.days < 1))) return toast('보관 기간은 1 이상의 정수(일)여야 합니다.', true);
+  if (!cau.some((r) => r.caution_type === '알레르기')
+      && !confirm('알레르기 행이 없습니다. 알레르기 "미확인" 상품으로 저장할까요?')) return;
+
+  $('#btn-save').disabled = true;
+  try {
+    const { error } = await db.from('products').insert(product);
+    if (error) return toast('저장 실패: ' + error.message, true);
+    // 하위 테이블 저장 중 실패하면 방금 만든 상품을 지워 반쪽 데이터를 남기지 않는다
+    const withId = (rows) => rows.map((r) => ({ ...r, product_id: product.product_id }));
+    for (const [table, rows] of [['product_ingredients', ing], ['product_storage', sto], ['product_cautions', cau]]) {
+      if (!rows.length) continue;
+      const { error: subErr } = await db.from(table).insert(withId(rows));
+      if (subErr) {
+        await db.from('products').delete().eq('product_id', product.product_id);
+        return toast(`저장 실패(${table}): ${subErr.message} — 상품 추가를 취소했습니다.`, true);
+      }
+    }
+    $('#add-dlg').close();
+    toast(`${product.name} 추가됨`);
+    await refresh();
+  } finally {
+    $('#btn-save').disabled = false;
+  }
+}
+
+// ---------- 이벤트 ----------
+$('#f-category').insertAdjacentHTML('beforeend', options(CATEGORIES));
+$('#connect-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  connect($('#conn-url').value, $('#conn-key').value, $('#conn-remember').checked);
+});
+$('#btn-disconnect').addEventListener('click', disconnect);
+$('#btn-refresh').addEventListener('click', refresh);
+$('#btn-add').addEventListener('click', openAdd);
+$('#add-form').addEventListener('submit', save);
+for (const id of ['#q', '#f-category', '#f-allergen']) $(id).addEventListener('input', render);
+
+$('#rows').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-del]');
+  if (del) return remove(del.dataset.del);
+  const row = e.target.closest('tr.row');
+  if (row) showDetail(row.dataset.id);
+});
+
+document.addEventListener('click', (e) => {
+  if (e.target.matches('[data-close]')) e.target.closest('dialog').close();
+  if (e.target.matches('[data-add]')) addSubRow(e.target.dataset.add);
+  if (e.target.matches('[data-remove]')) e.target.closest('.sub-row').remove();
+});
+
+// .env.local 값(server.ps1) → 브라우저에 기억해 둔 값 순서로 자동 연결
+const env = window.APP_CONFIG;
+if (env?.url && env?.key) {
+  connect(env.url, env.key, false, `${env.url} · ${env.keyType} 키 (.env.local)`);
+} else {
+  if (env) toast('app/product-admin/.env.local에 Supabase URL과 키를 넣은 뒤 새로고침하세요.', true);
+  const saved = loadConn();
+  if (saved?.url && saved?.key) {
+    $('#conn-url').value = saved.url;
+    $('#conn-remember').checked = true;
+    connect(saved.url, saved.key, true);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# Mac이 폴더마다 만드는 정보 파일
+.DS_Store
+
+# 키가 들어 있는 환경 파일 (어느 폴더에 있든 올리지 않는다)
+.env
+.env*.local
+
+# Claude Code 개인 설정
+.claude/settings.local.json
