@@ -1,0 +1,8 @@
+# Vercel에는 관리 페이지(app/product-admin/index.html)만 배포한다
+/*
+!/app
+/app/*
+!/app/product-admin
+# 로컬 전용 서버와 설정은 배포하지 않는다
+/app/product-admin/server.ps1
+/app/product-admin/.gitignore

@@ -98,4 +98,14 @@
 - `README.md`(`# food-list-test-`)만 커밋: `b758971 first commit`. 다른 파일은 아직 git에 안 올림
   - README는 PowerShell `echo`로 UTF-16으로 만들어져 있던 것을 UTF-8로 다시 저장
 - push: Claude 실행 창은 GitHub 로그인 창을 띄울 수 없어 사용자가 자기 터미널에서 `git push -u origin main` 실행 → 성공(원격 `main` = `b758971` 확인)
-- 주의: 다른 파일을 올리기 전에 폴더 맨 위 `.gitignore` 필요(`.env.local` · `.DS_Store` 등). 지금 `.gitignore`는 `app/product-admin/`에만 있음
+- 폴더 맨 위 `.gitignore` 새로 만듦: `.DS_Store` · `.env` · `.env*.local` · `.claude/settings.local.json` 제외. 한글 파일명 표시용 `core.quotepath false`(이 저장소만)
+- 나머지 파일 23개 커밋 · push: `05a69ae 상품 DB · 관리 페이지 추가`. 원격 `main` = `05a69ae` 확인, `.env.local`은 안 올라감 확인
+
+## 2026-11-02 — Vercel 배포 404 해결
+
+- 증상: 사용자가 저장소를 Vercel에 연결해 배포 → 사이트 주소에서 404(맨 위에 index.html이 없음)
+- 사용자가 Vercel 설정 화면(Root Directory)을 못 찾아서 대시보드 대신 파일로 해결
+  - 새 파일 `vercel.json`: `/` → `/app/product-admin/index.html`로 연결
+  - 새 파일 `.vercelignore`: `app/product-admin/index.html`만 배포(SQL · 문서 · `server.ps1` 등 제외)
+- 배포판에는 `config.js`가 없어 자동 연결 안 됨 → 연결 화면에서 URL · 키 입력. service_role 키는 배포판에 쓰지 말고 anon 키 + `policies.sql` 사용 권장
+- 검증: 이 PC에서 Vercel을 돌려 볼 수 없어 배포 결과는 사이트 주소로 확인 필요
